@@ -1,0 +1,33 @@
+# Input parameters file for the binary conversion script Deuteron2Kilosort
+# See PARAMS.md for more information on formatting and usage
+# Follows the TOML format (https://toml.io/en/)
+# WARNING: put all the path entries between single quotes '' to avoid escape characters
+
+# Parameters relative to input data (i. e., the DTx files location)
+# tasks_names can be a single task name or an array of all tasks names
+# that you want to merge in a single binary file
+[input_data]
+path = '/Volumes/bonini01/WIRELESS_Wifi_Router_Impianti2021/Acquisizioni Deuteron'
+session_name = "Wifi_20240430"
+tasks_names = ["Wifi_20240430_Clinico_TestaFissa", "Wifi_20240430_Clinico_TestaLibera", "Wifi_20240430_Gabbione"]
+
+# Parameters relative to the Deuteron specifications
+# If merging multiple tasks, start and stop must be arrays of the same length as tasks_names.
+[deuteron]
+file_type = "DT6"  # One of DT2, DT4, DT6, DT8, DAT
+start_times_s = [10, 15, 20]
+stop_times_s = [20, 25, 30]
+
+# Parameters relative to the output binary file
+[output]
+path = '/Users/mdima/Desktop/PhD/Progetto Sorting/kilosort-tests/bin-files'
+file_name = "Wifi_20240430_test_multiprocess.bin"
+data_type = "uint16"  # One of uint16, int16, int32, float32
+
+# Performance tuning parameters (optional)
+[performance]
+use_multiprocessing = true  # Set to false for sequential processing
+process_count = 4      # Number of parallel processes to use (default: CPU count)
+buffer_size = 16777216 # Buffer size for file operations in bytes (default: 16MB, the DTx file block size)
+enable_file_logging = false # Set to true to generate log files alongside console output
+show_artifact_warnings = false # Set to true to show warnings about potential artifacts in the data
