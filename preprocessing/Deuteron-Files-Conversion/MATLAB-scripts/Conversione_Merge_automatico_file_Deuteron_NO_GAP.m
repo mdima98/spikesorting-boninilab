@@ -16,7 +16,7 @@ TASKS= {
     'Wifi_20240430_Clinico_TestaLibera';...
     'Wifi_20240430_Gabbione'};
 
-raw_files_directory='\\fs01.hpc.unipr.it\bonini01\WIRELESS_Wifi_Router_Impianti2021\Acquisizioni Deuteron\Wifi_20240430\';
+raw_files_directory='';
 Deuteron_file_type='DT6'; % pu� essere 'DT2' o 'DT4' o 'DT6' a seconda che siano 
                           % stati registrati 32 o 64 o 128 canali, vedere nella cartella "name_mrg"
 start_and_stop_deuteron{1}=[6.8060 1117.1148]; % in secondi (presi dall'Excel "Start_and_Stop..."

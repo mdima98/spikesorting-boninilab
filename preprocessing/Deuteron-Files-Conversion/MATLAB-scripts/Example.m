@@ -2,7 +2,7 @@
 %    This script takes a single file of logger data and extracts it and converts it to neural data
 
 %% ====================================== Initialization ====================================== %%
-filePath = 'C:\Users\boninilab\Desktop\kilosort-test\NeuralExtractionCode'; % Enter the path for the location of your file
+filePath = ''; % Enter the path for the location of your file
 fileName = 'NEUR1490.DT6'; % Enter your filename
 
 
