@@ -18,7 +18,6 @@ from tqdm import tqdm
 import sys
 import multiprocessing as mp
 import os
-import shutil
 import tempfile
 import uuid
 import logging
@@ -115,8 +114,7 @@ def print_header():
     for line in title_art.split('\n'):
         print(f"{line:^{HEADER_WIDTH}}")
         
-    print(f"{'DEUTERON TO KILOSORT CONVERTER':^{HEADER_WIDTH}}")
-    print(f"{'By Matteo Di Mario':^{HEADER_WIDTH}}")
+    print(f"{'DEUTERON TO BINARY CONVERTER':^{HEADER_WIDTH}}")
     
     # Simplify the monkey grid to just one monkey
     monkey = art("monkey")
@@ -142,7 +140,6 @@ def print_section(title, width=70, char="-"):
     print(f" {title} ".center(width, char))
     print(char * width + "\n")
 
-# Replace print_separator with this
 def print_separator(title):
     """Print a section divider with a title and log it"""
     print('\n' + '-' * 50)
@@ -152,7 +149,7 @@ def get_meta_data(ext):
     """
     Extracts meta data based on the file extension.
     Builds a dictionary with essential information for data processing.
-    This information is found in the instruction manual of each type of logger.
+    This information is found in the instruction manual of each type of Deuteron logger.
     """
     meta_data_dict = {
         'DT2': {'num_channels': 32, 'num_adc_bits': 16, 'voltage_res': 0.2e-6, 'sampling_rate': 32e3},
@@ -172,15 +169,6 @@ def load_raw_dtx_data(file_path):
     """
     Loads raw binary data from a DTx file.
     This function only handles the file I/O and binary data loading.
-    
-    Args:
-        file_path: Path to the DTx file
-        
-    Returns:
-        numpy array containing raw uint16 data
-    
-    Raises:
-        IOError: If the file cannot be read or is empty
     """
     try:
         with open(file_path, 'rb') as fid:
@@ -196,14 +184,7 @@ def load_raw_dtx_data(file_path):
 
 def reshape_neural_data(raw_data, num_channels):
     """
-    Reshapes raw data into channels x samples format and handles data size issues.
-    
-    Args:
-        raw_data: 1D array of raw neural data values
-        num_channels: Number of channels in the recording
-        
-    Returns:
-        2D array with shape (channels, samples)
+    Reshapes raw data into samples x channels format.
     """
     # Check if data needs to be truncated to fit channel count
     if len(raw_data) % num_channels != 0:
@@ -212,37 +193,28 @@ def reshape_neural_data(raw_data, num_channels):
         # Truncate to fit channel count
         raw_data = raw_data[:-(len(raw_data) % num_channels)]
     
-    # Reshape into channels × samples format
-    return np.reshape(raw_data, (num_channels, -1))
+    # Reshape into samples x channels format
+    return np.reshape(raw_data, (-1, num_channels))
 
 def apply_data_transformations(neural_data, meta_data):
     """
     Apply any necessary transformations to the neural data.
     Future modifications to data processing can be added here.
-    
-    Args:
-        neural_data: 2D array of neural data (channels × samples)
-        meta_data: Dictionary containing recording metadata
-        
-    Returns:
-        Processed neural data
     """
-    # Currently no transformations are applied, but this function provides
-    # a clear entry point for future modifications like:
-    #  - Filtering
-    #  - Artifact removal
-    #  - Normalization
-    #  - Channel selection or reordering
+    # Convert to neural data
+    # neural_data = meta_data['voltage_res'] * (neural_data - 2**(meta_data['num_adc_bits']-1))
+    
+    # Put dropped block to zero, Deuteron puts them at -6.5 mV
+    # neural_data[neural_data <= -6e-3] = 0
     
     return neural_data
 
 def extract_time_window(neural_data, file_start_sample, num_samples_per_file, start_sample, stop_sample):
     """
     Extracts the relevant time window from neural data based on start and stop sample indices.
-    Handles shape inconsistencies robustly.
     """
     # Calculate the start and end indices for the current file
-    file_end_sample = file_start_sample + num_samples_per_file # neural_data.shape[1]  # Use actual shape instead of expected
+    file_end_sample = file_start_sample + num_samples_per_file
     
     # Skip this file if it's completely outside the desired range
     if file_end_sample <= start_sample or file_start_sample >= stop_sample:
@@ -256,23 +228,16 @@ def extract_time_window(neural_data, file_start_sample, num_samples_per_file, st
     memmap_start_idx = max(0, file_start_sample - start_sample)
     
     # Extract the relevant portion of the data
-    extracted_data = neural_data[:, slice_start:slice_end]
+    extracted_data = neural_data[slice_start:slice_end, :] # samples x channels
     
     # Recalculate memmap_end_idx based on actual extracted data size
-    memmap_end_idx = memmap_start_idx + extracted_data.shape[1]
+    memmap_end_idx = memmap_start_idx + (slice_end - slice_start)
     
     return extracted_data, memmap_start_idx, memmap_end_idx
 
 def process_dtx_file(file_path, meta_data):
     """
     Processes a DTx file to extract the neural data.
-    
-    Args:
-        file_path: Path to the DTx file
-        meta_data: Dictionary containing recording metadata
-        
-    Returns:
-        2D array of neural data (channels x samples)
     """
     try:
         # Load raw binary data
@@ -294,7 +259,7 @@ def process_dtx_file(file_path, meta_data):
     except Exception as e:
         raise IOError(f"Error processing file {file_path}: {str(e)}")
 
-def process_file(file_path, meta_data, current_sample, memmap, start_sample, stop_sample, 
+def process_file(file_path, meta_data, current_sample, memmap, num_samples_per_file, start_sample, stop_sample, 
                 session_name, task_name, show_artifact_warnings=True):
     """Process a single DTx file and write it to the memory-mapped array."""
     warnings_list = []
@@ -305,7 +270,7 @@ def process_file(file_path, meta_data, current_sample, memmap, start_sample, sto
         
         # Extract the relevant time window
         extracted_data, memmap_start_idx, memmap_end_idx = extract_time_window(
-            neural_data, current_sample, neural_data.shape[1], start_sample, stop_sample
+            neural_data, current_sample, num_samples_per_file, start_sample, stop_sample
         )
         
         # Calculate file start time in seconds
@@ -365,8 +330,8 @@ def process_task(task_info):
             raise ValueError(f"No DTx files found for task {task_name} at {task_dir}")
         
         # Create memmap for output file
-        mm = np.memmap(temp_file, dtype=data_type, mode='w+', 
-                      shape=(meta_data['num_channels'], samples_to_keep))
+        mm = np.memmap(temp_file, dtype=data_type, mode='w+',
+                      shape=(samples_to_keep, meta_data['num_channels'])) # Samples x channels
         
         # Process each file
         current_sample = 0
@@ -397,7 +362,7 @@ def process_task(task_info):
                     continue
                 
                 # Process the file and write to memmap
-                success, file_warnings = process_file(file_path, meta_data, file_start_sample, mm, 
+                success, file_warnings = process_file(file_path, meta_data, file_start_sample, mm, num_samples_per_file, 
                                      start_sample, stop_sample, session_name, task_name, show_artifact_warnings)
                 
                 all_warnings.extend(file_warnings)
@@ -572,7 +537,7 @@ def parse_command_line_args():
 
     try:
         print_separator("STARTING PREPROCESSING")
-        logger.info("Starting Deuteron to Kilosort4 data conversion")
+        logger.info("Starting Deuteron to binary data conversion")
         logger.info(f"Loading parameters from {toml_file_path}")
         
         # Load input parameters from a TOML file
@@ -737,11 +702,10 @@ def process_all_tasks(config, temp_dir):
     return sorted(results, key=lambda x: x[1])  # Sort by task index
 
 def merge_output_files(results, config):
-    """Focus only on merging temporary files into the final output file."""
+    """Merge temporary files into the final output file."""
     # Calculate total size to help with progress reporting
     total_size = sum(size for _, _, _, _, size, _ in results if size > 0)
     
-    # Add this just before the merging phase starts
     print_separator("STARTING MERGING PHASE")
     logger.info(f"Found {len([r for r in results if r[0]])} successful tasks to merge")
     for success, idx, msg, path, size, _ in results:
@@ -813,7 +777,7 @@ def write_to_memmap(memmap, data, start_idx, end_idx, file_path):
     """Write data to memmap with robust shape handling."""
     try:
         # Normal case - shapes match
-        memmap[:, start_idx:end_idx] = data
+        memmap[start_idx:end_idx, :] = data
         return True
     except ValueError as e:
         logger.warning(f"Shape mismatch when writing {file_path.name}: {str(e)}")
@@ -824,7 +788,7 @@ def write_to_memmap(memmap, data, start_idx, end_idx, file_path):
             rows = min(data.shape[0], memmap.shape[0])
             cols = min(data.shape[1], end_idx-start_idx)
             memmap[:rows, start_idx:start_idx+cols] = data[:rows, :cols]
-            logger.info(f"Recovered partial data from {file_path.name}: used {rows}×{cols} out of {data.shape}")
+            logger.info(f"Recovered partial data from {file_path.name}: used {rows}x{cols} out of {data.shape}")
             return True
         except Exception as inner_e:
             logger.error(f"Failed to recover any data from {file_path.name}: {str(inner_e)}")
