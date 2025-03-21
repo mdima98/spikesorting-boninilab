@@ -4,6 +4,11 @@
 .DS_Store
 
 
+# VSCode ide stuff
+*.code-workspace
+.history
+.vscode
+
 # ========================
 # Python specific
 # ========================
